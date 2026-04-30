@@ -652,7 +652,7 @@ window.removeImage = (id, btn) => {
 
 
 // ===================== API Client =====================
-const API_BASE = 'http://localhost:3000/api';
+const API_BASE = '/api';
 let __token = localStorage.getItem('crm_token') || '';
 let __users = [];
 let __tickets = [];
@@ -1262,7 +1262,6 @@ route('dashboard', () => {
         <div class="stat-card" style="cursor:pointer" onclick="goTicketsWithFilter('')"><div class="stat-icon blue">🎫</div><div><div class="stat-value">${total}</div><div class="stat-label">全部工单</div></div></div>
         <div class="stat-card" style="cursor:pointer" onclick="goTicketsWithFilter('pending')"><div class="stat-icon orange">⏳</div><div><div class="stat-value">${pending}</div><div class="stat-label">待处理</div></div></div>
         <div class="stat-card" style="cursor:pointer" onclick="goTicketsWithFilter('processing')"><div class="stat-icon cyan">🔄</div><div><div class="stat-value">${processing}</div><div class="stat-label">处理中</div></div></div>
-        <div class="stat-card" style="cursor:pointer" onclick="goTicketsWithFilter('waiting')"><div class="stat-icon blue">⏸️</div><div><div class="stat-value">${waiting}</div><div class="stat-label">等待客户回复</div></div></div>
         <div class="stat-card" style="cursor:pointer" onclick="goTicketsWithFilter('resolved')"><div class="stat-icon green">✅</div><div><div class="stat-value">${resolved}</div><div class="stat-label">已解决</div></div></div>
         <div class="stat-card" style="cursor:pointer" onclick="goTicketsWithFilter('high')"><div class="stat-icon red">🔥</div><div><div class="stat-value">${highPriority}</div><div class="stat-label">高优先级</div></div></div>
         ${isAdminUser ? `<div class="stat-card"><div class="stat-icon blue">👥</div><div><div class="stat-value">${customers.length}</div><div class="stat-label">客户数量</div></div></div>` : ''}
@@ -1305,7 +1304,7 @@ route('dashboard', () => {
           <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap: 16px;">
             ${users.filter(u => u.role === 'engineer').map(u => {
               const engTickets = tickets.filter(t => t.engineerId === u.id && t.status !== 'resolved' && t.status !== 'closed');
-              return `<div style="background:#f5f5f5; padding:16px; border-radius:var(--radius);"><div class="font-bold">${u.name}</div><div class="text-muted font-sm">${u.email}</div><div class="mt-2">处理中: <span class="text-primary font-bold">${engTickets.filter(t=>t.status==='processing').length}</span> | 等待回复: <span class="text-primary font-bold">${engTickets.filter(t=>t.status==='waiting').length}</span> | 待处理: <span class="text-warning font-bold">${engTickets.filter(t=>t.status==='pending').length}</span></div></div>`;
+              return `<div style="background:#f5f5f5; padding:16px; border-radius:var(--radius);"><div class="font-bold">${u.name}</div><div class="text-muted font-sm">${u.email}</div><div class="mt-2">处理中: <span class="text-primary font-bold">${engTickets.filter(t=>t.status==='processing').length}</span> | 待处理: <span class="text-warning font-bold">${engTickets.filter(t=>t.status==='pending').length}</span></div></div>`;
             }).join('')}
           </div>
         </div>

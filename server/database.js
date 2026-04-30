@@ -25,11 +25,16 @@ function generateTicketId() {
 }
 
 async function initDb() {
-  await db.read();
+  try {
+    await db.read();
+  } catch (e) {
+    // ignore read errors (file not found etc)
+  }
   if (!db.data) db.data = { users: [], customers: [], tickets: [] };
 }
 
 const dbApi = {
+  get data() { return db.data; },
   async init() { await initDb(); },
 
   async getUsers() { await initDb(); return db.data.users; },
