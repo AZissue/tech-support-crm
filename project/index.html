@@ -1263,7 +1263,7 @@ route('dashboard', () => {
         <div class="stat-card" style="cursor:pointer" onclick="goTicketsWithFilter('processing')"><div class="stat-icon cyan">🔄</div><div><div class="stat-value">${processing}</div><div class="stat-label">处理中</div></div></div>
         <div class="stat-card" style="cursor:pointer" onclick="goTicketsWithFilter('resolved')"><div class="stat-icon green">✅</div><div><div class="stat-value">${resolved}</div><div class="stat-label">已解决</div></div></div>
         <div class="stat-card" style="cursor:pointer" onclick="goTicketsWithFilter('high')"><div class="stat-icon red">🔥</div><div><div class="stat-value">${highPriority}</div><div class="stat-label">高优先级</div></div></div>
-        ${isAdminUser ? `<div class="stat-card"><div class="stat-icon blue">👥</div><div><div class="stat-value">${customers.length}</div><div class="stat-label">客户数量</div></div></div>` : ''}
+        ${isAdminUser ? `<div class="stat-card"><div class="stat-icon blue">👥</div><div><div class="stat-value">${customers.length}</div><div class="stat-label">客户数量</div></div></div><div class="stat-card"><div class="stat-icon" style="background:#f0f0f0;color:#666;">📤</div><div><div class="stat-value" style="font-size:1rem;"><button class="btn btn-sm btn-default" onclick="exportTickets()">工单</button> <button class="btn btn-sm btn-default" onclick="exportCustomers()">客户</button></div><div class="stat-label">导出CSV</div></div></div>` : ''}
       </div>
       ${overdue > 0 ? `<div class="card mb-4" style="border-left:4px solid var(--danger);"><div class="card-body"><strong>⚠️ 有 ${overdue} 个工单已逾期，请尽快处理！</strong></div></div>` : ''}
       <div class="card mb-4" style="border-left:4px solid var(--primary);">
@@ -1803,6 +1803,63 @@ window.closeTicket = async (id) => {
     notify('操作失败', e.message, 'error');
   }
 };
+
+window.exportTickets = async () => {
+  try {
+    const resp = await fetch(`${API_BASE}/export/tickets`, { headers: { Authorization: `Bearer ${__token}` } });
+    if (!resp.ok) throw new Error('导出失败');
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tickets_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    notify('导出成功', '工单 CSV 已下载', 'success');
+  } catch (e) {
+    notify('导出失败', e.message, 'error');
+  }
+};
+
+window.exportCustomers = async () => {
+  try {
+    const resp = await fetch(`${API_BASE}/export/customers`, { headers: { Authorization: `Bearer ${__token}` } });
+    if (!resp.ok) throw new Error('导出失败');
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `customers_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    notify('导出成功', '客户 CSV 已下载', 'success');
+  } catch (e) {
+    notify('导出失败', e.message, 'error');
+  }
+};
+
+window.importData = async () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!confirm('导入将覆盖现有数据，建议先导出备份。确定继续？')) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      await apiFetch('/import', { method: 'POST', body: JSON.stringify(data) });
+      await loadAllData();
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+      notify('导入成功', '数据已恢复', 'success');
+    } catch (err) {
+      notify('导入失败', err.message, 'error');
+    }
+  };
+  input.click();
+};
+
 window.addComment = async (id) => {
   const content = document.getElementById('comment-input').value.trim();
   if (!content && !__pendingImages.length) return;
@@ -1885,15 +1942,19 @@ route('customers', () => {
       if (search) list = list.filter(c => c.name.includes(search) || c.contact.includes(search) || c.phone.includes(search));
       const tbody = document.getElementById('cust-tbody');
       if (!tbody) return;
-      tbody.innerHTML = list.map(c => `<tr>
+      tbody.innerHTML = list.map(c => {
+        const lastTicket = getTickets().filter(t => t.customerId === c.id).sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt))[0];
+        return `<tr>
         <td style="cursor:pointer" onclick="navigate('customer/${c.id}')">${escapeHtml(c.name)}</td>
         <td style="cursor:pointer" onclick="navigate('customer/${c.id}')">${escapeHtml(c.contact)}</td>
         <td style="cursor:pointer" onclick="navigate('customer/${c.id}')">${escapeHtml(c.phone)}</td>
         <td style="cursor:pointer" onclick="navigate('customer/${c.id}')">${escapeHtml(c.industry)}</td>
         <td style="cursor:pointer" onclick="navigate('customer/${c.id}')"><span class="tag ${c.level==='A'?'tag-red':c.level==='B'?'tag-orange':'tag-green'}">${c.level}级</span></td>
+        <td style="cursor:pointer" onclick="navigate('customer/${c.id}')">${lastTicket ? formatDate(lastTicket.createdAt) : '<span class="text-muted">-</span>'}</td>
         <td style="cursor:pointer" onclick="navigate('customer/${c.id}')">${c.devices && c.devices.length || 0}</td>
         ${isAdmin()?`<td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deleteCustomer('${c.id}')">删除</button></td>`:''}
-      </tr>`).join('') || '<tr><td colspan="7" class="text-center text-muted">无匹配客户</td></tr>';
+      </tr>`;
+      }).join('') || '<tr><td colspan="8" class="text-center text-muted">无匹配客户</td></tr>';
     };
     container.innerHTML = `
       <h1 class="page-title">👥 客户管理</h1>
@@ -1902,7 +1963,7 @@ route('customers', () => {
         <button class="btn btn-primary" onclick="openAddCustomerModal()">+ 添加客户</button>
       </div>
       <div class="card"><div class="card-body" style="padding:0;"><div class="table-wrap">
-        <table class="data-table"><thead><tr><th>客户名称</th><th>联系人</th><th>电话</th><th>行业</th><th>等级</th><th>设备数</th>${isAdmin()?'<th>操作</th>':''}</tr></thead>
+        <table class="data-table"><thead><tr><th>客户名称</th><th>联系人</th><th>电话</th><th>行业</th><th>等级</th><th>最近工单</th><th>设备数</th>${isAdmin()?'<th>操作</th>':''}</tr></thead>
         <tbody id="cust-tbody"></tbody></table>
       </div></div></div>`;
     setTimeout(render, 0);
@@ -1960,6 +2021,21 @@ route('customer/([^/]+)', (id) => {
           <div class="card-body" style="padding:0;">
             ${customer.devices && customer.devices.length ? customer.devices.map((d,i) => `<div style="padding:12px 16px; border-bottom:1px solid var(--border-light);"><div class="flex flex-between flex-center"><span class="font-bold">${escapeHtml(d.name)}</span><button class="btn btn-sm btn-danger" onclick="removeDevice('${customer.id}',${i})">删除</button></div><div class="font-sm text-muted">${escapeHtml(d.model)} | SN: ${escapeHtml(d.sn)}</div></div>`).join('') : '<div class="empty-state" style="padding:30px;"><div class="text-muted">暂无设备</div></div>'}
           </div>
+        </div>
+      </div>
+      <div class="card mt-4">
+        <div class="card-header"><span class="card-title">📋 最近互动</span></div>
+        <div class="card-body">
+          ${relatedTickets.length ? `
+            <div class="flex flex-between flex-center mb-3">
+              <div><span class="font-bold">共 ${relatedTickets.length} 个工单</span><span class="text-muted font-sm">（最后更新: ${formatDate(relatedTickets[0].updatedAt)})</span></div>
+              <span class="tag ${relatedTickets[0].status==='pending'?'tag-orange':relatedTickets[0].status==='processing'?'tag-blue':relatedTickets[0].status==='resolved'?'tag-green':'tag-gray'}">${relatedTickets[0].status==='pending'?'待处理':relatedTickets[0].status==='processing'?'处理中':relatedTickets[0].status==='waiting'?'等待回复':relatedTickets[0].status==='resolved'?'已解决':'已关闭'}</span>
+            </div>
+            <div style="padding:12px; background:#f5f5f5; border-radius:var(--radius); cursor:pointer;" onclick="navigate('ticket/${relatedTickets[0].id}')">
+              <div class="font-bold">${escapeHtml(relatedTickets[0].title)}</div>
+              <div class="font-sm text-muted mt-1">${relatedTickets[0].id} | ${escapeHtml(relatedTickets[0].category || '未分类')} | ${formatDate(relatedTickets[0].createdAt)}</div>
+            </div>
+          ` : '<div class="text-muted text-center">暂无互动记录</div>'}
         </div>
       </div>
       <div class="card mt-4">

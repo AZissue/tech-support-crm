@@ -88,6 +88,46 @@ const dbApi = {
     await db.write();
   },
 
+  async importData(data) {
+    await initDb();
+    if (!data || typeof data !== 'object') throw new Error('数据格式错误');
+    if (!Array.isArray(data.users) || !Array.isArray(data.customers) || !Array.isArray(data.tickets)) {
+      throw new Error('数据缺少必要字段 (users, customers, tickets)');
+    }
+    db.data = {
+      users: data.users,
+      customers: data.customers,
+      tickets: data.tickets
+    };
+    await db.write();
+    return { users: data.users.length, customers: data.customers.length, tickets: data.tickets.length };
+  },
+
+  async exportData() {
+    await initDb();
+    return db.data;
+  },
+
+  async importData(data) {
+    await initDb();
+    if (!data || typeof data !== 'object') throw new Error('数据格式错误');
+    if (!Array.isArray(data.users) || !Array.isArray(data.customers) || !Array.isArray(data.tickets)) {
+      throw new Error('数据缺少必要字段 (users, customers, tickets)');
+    }
+    db.data = {
+      users: data.users,
+      customers: data.customers,
+      tickets: data.tickets
+    };
+    await db.write();
+    return { users: data.users.length, customers: data.customers.length, tickets: data.tickets.length };
+  },
+
+  async exportData() {
+    await initDb();
+    return db.data;
+  },
+
   generateId,
   generateTicketId,
 

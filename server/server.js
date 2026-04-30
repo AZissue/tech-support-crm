@@ -203,6 +203,88 @@ app.get('/api/stats', auth, async (req, res) => {
   });
 });
 
+// ===== Export / Import =====
+function toCSV(rows, headers) {
+  const escape = (v) => {
+    const s = v == null ? '' : String(v);
+    if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+      return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  };
+  const lines = [headers.map(h => h.label).join(',')];
+  for (const row of rows) {
+    lines.push(headers.map(h => escape(row[h.key])).join(','));
+  }
+  return '\ufeff' + lines.join('\n'); // BOM for Excel UTF-8
+}
+
+app.get('/api/export/tickets', auth, async (req, res) => {
+  try {
+    const tickets = await db.getTickets();
+    const customers = await db.getCustomers();
+    const users = await db.getUsers();
+    const rows = tickets.map(t => {
+      const c = customers.find(x => x.id === t.customerId);
+      const u = users.find(x => x.id === t.engineerId);
+      return {
+        id: t.id,
+        title: t.title,
+        customer: c ? c.name : '',
+        category: t.category || '',
+        status: t.status,
+        priority: t.priority,
+        engineer: u ? u.name : '',
+        createdAt: t.createdAt ? t.createdAt.slice(0,10) : '',
+        dueDate: t.dueDate ? t.dueDate.slice(0,10) : ''
+      };
+    });
+    const csv = toCSV(rows, [
+      { key: 'id', label: '工单号' },
+      { key: 'title', label: '标题' },
+      { key: 'customer', label: '客户' },
+      { key: 'category', label: '分类' },
+      { key: 'status', label: '状态' },
+      { key: 'priority', label: '优先级' },
+      { key: 'engineer', label: '负责人' },
+      { key: 'createdAt', label: '创建日期' },
+      { key: 'dueDate', label: '截止日期' }
+    ]);
+    res.setHeader('Content-Disposition', `attachment; filename="tickets_${new Date().toISOString().slice(0,10)}.csv"`);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.send(csv);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/export/customers', auth, async (req, res) => {
+  try {
+    const customers = await db.getCustomers();
+    const rows = customers.map(c => ({
+      name: c.name,
+      contact: c.contact || '',
+      phone: c.phone || '',
+      email: c.email || '',
+      industry: c.industry || '',
+      level: c.level || ''
+    }));
+    const csv = toCSV(rows, [
+      { key: 'name', label: '客户名称' },
+      { key: 'contact', label: '联系人' },
+      { key: 'phone', label: '电话' },
+      { key: 'email', label: '邮箱' },
+      { key: 'industry', label: '行业' },
+      { key: 'level', label: '等级' }
+    ]);
+    res.setHeader('Content-Disposition', `attachment; filename="customers_${new Date().toISOString().slice(0,10)}.csv"`);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.send(csv);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ===== Start =====
 app.listen(PORT, () => {
   console.log(`[CRM Server] http://localhost:${PORT}`);
