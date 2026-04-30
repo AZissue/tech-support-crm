@@ -1119,9 +1119,9 @@ function updateNotifyMenu() {
   const uid = (getCurrentUser() || {}).userId;
   const list = getReminders().filter(r => r.toUserId === uid).sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt)).slice(0,20);
   if (!list.length) { menu.innerHTML = '<div class="dropdown-item text-muted">暂无提醒</div>'; return; }
-  menu.innerHTML = list.map(r => `<div class="dropdown-item" style="${r.read?'':'background:#e6f7ff;'}" onclick="readReminderAsync('${r.id}')">
+  menu.innerHTML = list.map(r => `<div class="dropdown-item" style="${r.read?'':'background:#e6f7ff;'};cursor:pointer;" onclick="readReminder('${r.id}')">
     <div><div class="font-sm font-bold">${escapeHtml(r.fromName)} 的提醒</div><div class="font-sm">${escapeHtml(r.message)}</div><div class="font-sm text-muted">${formatDate(r.createdAt)}</div></div>
-  </div>`).join('') + '<div class="dropdown-item text-center text-primary" onclick="clearAllRemindersAsync()">全部已读</div>';
+  </div>`).join('') + '<div class="dropdown-item text-center text-primary" onclick="clearAllReminders()">全部已读</div>';
 }
 async function readReminder(id) {
   await readReminderAsync(id);
@@ -1351,18 +1351,21 @@ route('tickets', () => {
       if (!tbody) return;
       tbody.innerHTML = list.map(t => {
         const c = getCustomers().find(x => x.id === t.customerId);
+        const eng = getUsers().find(x => x.id === t.engineerId);
         const overdue = t.status !== 'resolved' && t.status !== 'closed' && new Date(t.dueDate) < new Date();
         return `<tr>
           <td style="cursor:pointer" onclick="navigate('ticket/${t.id}')"><span class="font-bold">${t.id}</span>${overdue?' <span class="tag tag-red">逾期</span>':''}</td>
           <td style="cursor:pointer" onclick="navigate('ticket/${t.id}')">${escapeHtml(t.title)}</td>
           <td style="cursor:pointer" onclick="navigate('ticket/${t.id}')">${c ? escapeHtml(c.name) : '-'}</td>
+          <td style="cursor:pointer" onclick="navigate('ticket/${t.id}')">${escapeHtml(t.category || '-')}</td>
           <td style="cursor:pointer" onclick="navigate('ticket/${t.id}')">${statusTag(t.status)}</td>
           <td style="cursor:pointer" onclick="navigate('ticket/${t.id}')">${priorityTag(t.priority)}</td>
+          <td style="cursor:pointer" onclick="navigate('ticket/${t.id}')">${eng ? escapeHtml(eng.name) : '-'}</td>
           <td style="cursor:pointer" onclick="navigate('ticket/${t.id}')">${formatDate(t.createdAt)}</td>
           <td style="cursor:pointer" onclick="navigate('ticket/${t.id}')">${formatDate(t.dueDate, 'MM-dd')}</td>
           ${isAdmin() ? `<td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deleteTicket('${t.id}')">删除</button></td>` : ''}
         </tr>`;
-      }).join('') || '<tr><td colspan="8" class="text-center text-muted">无匹配工单</td></tr>';
+      }).join('') || '<tr><td colspan="10" class="text-center text-muted">无匹配工单</td></tr>';
     };
     container.innerHTML = `
       <h1 class="page-title">🎫 工单管理</h1>
@@ -1375,7 +1378,7 @@ route('tickets', () => {
         </div>
       </div>
       <div class="card"><div class="card-body" style="padding:0;"><div class="table-wrap">
-        <table class="data-table"><thead><tr><th>工单号</th><th>标题</th><th>客户</th><th>状态</th><th>优先级</th><th>创建时间</th><th>截止日期</th>${isAdmin()?'<th>操作</th>':''}</tr></thead>
+        <table class="data-table"><thead><tr><th>工单号</th><th>标题</th><th>客户</th><th>分类</th><th>状态</th><th>优先级</th><th>负责人</th><th>创建时间</th><th>截止日期</th>${isAdmin()?'<th>操作</th>':''}</tr></thead>
         <tbody id="ticket-tbody"></tbody></table>
       </div></div></div>`;
     setTimeout(renderList, 0);
@@ -1402,7 +1405,12 @@ window.openCreateTicketModal = () => {
           </div>
         </div>
         <hr style="margin:16px 0; border:none; border-top:1px solid var(--border-light);">
-        <div class="form-group"><label class="form-label">标题 <span class="required">*</span></label><input type="text" id="new-title" class="form-input"></div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">工单类型</label>
+            <select class="form-select" id="new-ticket-type"><option value="RVC" selected>RVC</option><option value="VDA">VDA</option></select>
+          </div>
+          <div class="form-group"><label class="form-label">标题 <span class="required">*</span></label><input type="text" id="new-title" class="form-input"></div>
+        </div>
         <div class="form-row">
           <div class="form-group"><label class="form-label">客户 <span class="required">*</span></label>
             <div class="customer-search-wrap" style="position:relative;">
@@ -1492,17 +1500,17 @@ window.submitNewTicket = async () => {
   try {
     const now = new Date().toISOString();
     const due = new Date(Date.now() + 86400000 * (priority==='high'?1:priority==='medium'?3:7)).toISOString();
-    const id = 'TK' + String(Date.now()).slice(-6);
+    const ticketType = document.getElementById('new-ticket-type').value;
     await createTicketAsync({
-      id, title, customerId, engineerId, status: 'pending', priority, category, description,
+      ticketType, title, customerId, engineerId, status: 'pending', priority, category, description,
       images: __pendingImages.map(x => x.base64),
       createdAt: now, updatedAt: now, dueDate: due, creatorId: (getCurrentUser() || {}).id, comments: []
     });
     addReminder(id, engineerId, `您有一个新工单被指派：${title}`);
     notify('创建成功', `工单 ${id} 已创建`, 'success');
     document.querySelector('.modal-overlay').remove();
-    if (currentRoute === 'tickets') { window.dispatchEvent(new HashChangeEvent('hashchange')); }
-    else { navigate('tickets'); }
+    await loadAllData();
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
   } catch (e) {
     notify('创建失败', e.message, 'error');
   }
@@ -1618,7 +1626,8 @@ window.submitEditTicket = async (id) => {
     await saveTicketUpdate(id, fields);
     notify('保存成功', '', 'success');
     document.querySelector('.modal-overlay').remove();
-    navigate('ticket/' + id);
+    await loadAllData();
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
   } catch (e) {
     notify('保存失败', e.message, 'error');
   }
@@ -1748,7 +1757,8 @@ window.resolveTicket = async (id) => {
   try {
     await saveTicketUpdate(id, { status: 'resolved', updatedAt: new Date().toISOString() });
     notify('工单已解决', `${id} 已标记为已解决`, 'success');
-    navigate('ticket/' + id);
+    await loadAllData();
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
   } catch (e) {
     notify('操作失败', e.message, 'error');
   }
@@ -1757,7 +1767,8 @@ window.startProcessing = async (id) => {
   try {
     await saveTicketUpdate(id, { status: 'processing', updatedAt: new Date().toISOString() });
     notify('开始处理', `${id} 已开始处理`, 'success');
-    navigate('ticket/' + id);
+    await loadAllData();
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
   } catch (e) {
     notify('操作失败', e.message, 'error');
   }
@@ -1766,7 +1777,8 @@ window.waitForCustomer = async (id) => {
   try {
     await saveTicketUpdate(id, { status: 'waiting', updatedAt: new Date().toISOString() });
     notify('等待客户回复', `${id} 已标记为等待客户回复`, 'success');
-    navigate('ticket/' + id);
+    await loadAllData();
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
   } catch (e) {
     notify('操作失败', e.message, 'error');
   }
@@ -1775,7 +1787,8 @@ window.resumeProcessing = async (id) => {
   try {
     await saveTicketUpdate(id, { status: 'processing', updatedAt: new Date().toISOString() });
     notify('继续处理', `${id} 已恢复处理中`, 'success');
-    navigate('ticket/' + id);
+    await loadAllData();
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
   } catch (e) {
     notify('操作失败', e.message, 'error');
   }
@@ -1784,7 +1797,8 @@ window.closeTicket = async (id) => {
   try {
     await saveTicketUpdate(id, { status: 'closed', updatedAt: new Date().toISOString() });
     notify('工单已关闭', `${id} 已关闭`, 'success');
-    navigate('ticket/' + id);
+    await loadAllData();
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
   } catch (e) {
     notify('操作失败', e.message, 'error');
   }
@@ -1796,7 +1810,8 @@ window.addComment = async (id) => {
     await addTicketComment(id, { content, images: __pendingImages.map(x => x.base64) });
     __pendingImages = [];
     notify('记录已添加', '', 'success');
-    navigate('ticket/' + id);
+    await loadAllData();
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
   } catch (e) {
     notify('操作失败', e.message, 'error');
   }
@@ -1827,7 +1842,8 @@ window.doTransfer = async (id) => {
     }
     notify('转交成功', '', 'success');
     document.querySelector('.modal-overlay').remove();
-    navigate('ticket/' + id);
+    await loadAllData();
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
   } catch (e) {
     notify('转交失败', e.message, 'error');
   }
@@ -1850,10 +1866,12 @@ window.doUrge = async (id) => {
       await addTicketComment(id, { content: `【催办】${msg}` });
       addReminder(id, t.engineerId, `【催办】${getCurrentUser().name}：${msg}（工单：${t.title}）`);
       notify('催办已发送', '', 'success');
+      document.querySelector('.modal-overlay').remove();
+      await loadAllData();
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
     } catch (e) {
       notify('催办失败', e.message, 'error');
     }
-    document.querySelector('.modal-overlay').remove();
   }
 };
 
@@ -2021,6 +2039,7 @@ window.submitEditCustomer = async (id) => {
     notify('保存成功', '', 'success');
     document.querySelector('.modal-overlay').remove();
     navigate('customer/' + id);
+    await loadAllData();
   } catch (e) {
     notify('保存失败', e.message, 'error');
   }
@@ -2109,6 +2128,7 @@ window.submitUser = async () => {
     await createUserAsync({ id: generateId('usr'), username, name, password, role: document.getElementById('new-role').value, email: document.getElementById('new-email').value, phone: document.getElementById('new-phone').value, color: '#2563eb', isActive: true, createdAt: new Date().toISOString() });
     notify('添加成功', '', 'success');
     document.querySelector('.modal-overlay').remove();
+    await loadAllData();
     navigate('admin/team');
   } catch (e) {
     notify('添加失败', e.message, 'error');
@@ -2139,6 +2159,7 @@ window.updateUser = async (id) => {
     await updateUserAsync(id, fields);
     notify('保存成功', '', 'success');
     document.querySelector('.modal-overlay').remove();
+    await loadAllData();
     navigate('admin/team');
   } catch (e) {
     notify('保存失败', e.message, 'error');

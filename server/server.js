@@ -90,6 +90,10 @@ app.post('/api/tickets', auth, async (req, res) => {
   if (!ticket.creatorId) {
     ticket.creatorId = req.user.id;
   }
+  // 后端统一生成工单编号
+  if (!ticket.id || !ticket.id.includes('-')) {
+    ticket.id = db.generateTicketId(ticket.ticketType || 'RVC');
+  }
   const newTicket = await db.createTicket(ticket);
   res.status(201).json(newTicket);
 });

@@ -15,13 +15,26 @@ function generateId(prefix = 'id') {
   return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6)}`;
 }
 
-function generateTicketId() {
+function generateTicketId(type = 'RVC') {
   const n = new Date();
   const yy = String(n.getFullYear()).slice(2);
   const mm = String(n.getMonth() + 1).padStart(2, '0');
   const dd = String(n.getDate()).padStart(2, '0');
-  const rand = String(Math.floor(Math.random() * 900) + 100);
-  return `TK${yy}${mm}${dd}${rand}`;
+  const dateStr = `${yy}${mm}${dd}`;
+  const prefix = `${type}-${dateStr}`;
+  
+  let maxSeq = 0;
+  const tickets = db.data ? db.data.tickets : [];
+  for (const t of tickets) {
+    if (t.id && t.id.startsWith(prefix)) {
+      const seqStr = t.id.slice(prefix.length);
+      const seq = parseInt(seqStr, 10);
+      if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+    }
+  }
+  
+  const nextSeq = String(maxSeq + 1).padStart(3, '0');
+  return `${prefix}${nextSeq}`;
 }
 
 async function initDb() {
