@@ -1,5 +1,11 @@
 node_modules/
 data/
+<<<<<<< HEAD
 *.db
 .DS_Store
 Thumbs.db
+=======
+uploads/
+deploy.zip
+*.log
+>>>>>>> 69bca3e0d2eaa95bbd353b29c6fd0841c51b1e4f
