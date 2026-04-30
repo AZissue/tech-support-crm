@@ -935,15 +935,14 @@ function parseTicketInput(text) {
 
   // === 3. 类别识别（更丰富的关键词映射）===
   const catPatterns = [
-    { keys: ['服务器','蓝屏','死机','宕机','重启','开不了机','电源','主板','内存','硬盘','CPU','风扇','过热','黑屏','花屏','显示器','键盘','鼠标','打印机','扫描仪','复印机','投影仪','电话'], cat: '硬件故障' },
-    { keys: ['网络','断网','连不上网','WiFi','路由器','交换机','网线','带宽','丢包','延迟','DNS','IP','防火墙','VPN','专线','无线','信号','拓扑','ping不通'], cat: '网络问题' },
-    { keys: ['系统','操作系统','Windows','Linux','Mac','Ubuntu','CentOS','死机','卡死','崩溃','蓝屏','黑屏','更新','补丁','重装','升级','版本','兼容','驱动'], cat: '系统故障' },
-    { keys: ['软件','程序','应用','APP','客户端','浏览器','Office','Excel','Word','数据库','SQL','MySQL','Oracle','MongoDB','Redis','安装','卸载','闪退','报错','异常','Bug','接口','API','脚本','代码'], cat: '软件问题' },
-    { keys: ['慢','卡顿','加载','响应','延迟','超时','CPU高','内存高','磁盘满','空间不足','清理','优化','瓶颈','并发','吞吐量','TPS','QPS'], cat: '性能问题' },
-    { keys: ['配置','设置','参数','调整','修改','策略','规则','权限','账号','密码','开通','关闭','启用','禁用','添加','删除','变更','迁移','切换'], cat: '配置变更' },
-    { keys: ['存储','磁盘','硬盘','NAS','SAN','备份','恢复','RAID','空间','容量','满','不足','扩容','清理','归档','迁移','同步','复制','快照'], cat: '存储问题' },
-    { keys: ['安全','病毒','木马','勒索','入侵','攻击','漏洞','补丁','防火墙','WAF','SSL','证书','加密','解密','泄露','窃取','权限','越权','审计','日志'], cat: '安全问题' },
-    { keys: ['数据库','SQL','MySQL','Oracle','PostgreSQL','MongoDB','Redis','表','字段','索引','查询','写入','删除','备份','迁移','同步','锁死','连接池','死锁','慢查询'], cat: '数据库问题' },
+    { keys: ['点云','点云质量','点云调试','深度图','深度数据','3D数据','点云生成','点云拼接','点云融合','噪声','空洞','飞点','精度','分辨率','视差','双目','结构光','ToF'], cat: '点云调试' },
+    { keys: ['硬件','设备','相机','镜头','电源','主板','内存','硬盘','CPU','风扇','过热','黑屏','花屏','显示器','连接线','接口','USB','网线','线缆','损坏','故障','无法开机','重启'], cat: '硬件故障' },
+    { keys: ['软件','程序','应用','客户端','安装','卸载','闪退','报错','异常','Bug','崩溃','卡死','界面','UI','显示','版本','兼容','更新','升级'], cat: '软件问题' },
+    { keys: ['SDK','API','接口','开发包','编程','代码','脚本','C++','Python','调用','集成','编译','链接','示例','Demo','文档','开发指南'], cat: 'SDK开发' },
+    { keys: ['标定','手眼标定','眼在手上','眼在手外','相机标定','内参','外参','畸变','棋盘格','标定板','圆点标定','坐标系','位姿','矩阵','RPY','旋转','平移','变换'], cat: '手眼标定' },
+    { keys: ['需求','沟通','咨询','报价','方案','技术方案','定制','开发','合作','项目','验收','交付','培训','演示','介绍','了解','需求确认'], cat: '需求沟通' },
+    { keys: ['样品','测试','检测','测量','验证','精度测试','重复性','对比','评估','试用','样机','现场','实验','验收','报告','数据分析'], cat: '样品测试' },
+    { keys: ['选型','相机选型','型号','参数','规格','对比','推荐','适用','场景','应用','分辨率','帧率','视场','FOV','基线','工作距离','环境光','IP防护','接口类型'], cat: '相机选型' },
   ];
   
   let bestCat = null;
@@ -1421,7 +1420,7 @@ window.openCreateTicketModal = () => {
             <select class="form-select" id="new-priority"><option value="high">高</option><option value="medium" selected>中</option><option value="low">低</option></select>
           </div>
           <div class="form-group"><label class="form-label">分类</label>
-            <select class="form-select" id="new-category"><option value="硬件故障">硬件故障</option><option value="网络问题">网络问题</option><option value="系统故障">系统故障</option><option value="软件问题">软件问题</option><option value="性能问题">性能问题</option><option value="配置变更">配置变更</option><option value="存储问题">存储问题</option><option value="其他">其他</option></select>
+            <select class="form-select" id="new-category"><option value="点云调试">点云调试</option><option value="硬件故障">硬件故障</option><option value="软件问题">软件问题</option><option value="SDK开发">SDK开发</option><option value="手眼标定">手眼标定</option><option value="需求沟通">需求沟通</option><option value="样品测试">样品测试</option><option value="相机选型">相机选型</option></select>
           </div>
         </div>
         <div class="form-group"><label class="form-label">详细描述</label><textarea class="form-textarea" id="new-desc" rows="3"></textarea></div>
@@ -1595,7 +1594,7 @@ window.openEditTicketModal = (id) => {
       <div class="form-group"><label class="form-label">标题 <span class="required">*</span></label><input type="text" id="edit-title" class="form-input" value="${escapeHtml(t.title)}"></div>
       <div class="form-row"><div class="form-group"><label class="form-label">客户</label><select class="form-select" id="edit-customer">${getCustomers().map(c => `<option value="${c.id}" ${c.id===t.customerId?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">负责人</label><select class="form-select" id="edit-engineer">${getUsers().filter(u=>u.role==='engineer').map(u => `<option value="${u.id}" ${u.id===t.engineerId?'selected':''}>${escapeHtml(u.name)}</option>`).join('')}</select></div></div>
       <div class="form-row"><div class="form-group"><label class="form-label">状态</label><select class="form-select" id="edit-status"><option value="pending" ${t.status==='pending'?'selected':''}>待处理</option><option value="processing" ${t.status==='processing'?'selected':''}>处理中</option><option value="waiting" ${t.status==='waiting'?'selected':''}>等待客户回复</option><option value="resolved" ${t.status==='resolved'?'selected':''}>已解决</option><option value="closed" ${t.status==='closed'?'selected':''}>已关闭</option></select></div><div class="form-group"><label class="form-label">优先级</label><select class="form-select" id="edit-priority"><option value="low" ${t.priority==='low'?'selected':''}>低</option><option value="medium" ${t.priority==='medium'?'selected':''}>中</option><option value="high" ${t.priority==='high'?'selected':''}>高</option></select></div></div>
-      <div class="form-group"><label class="form-label">分类</label><select class="form-select" id="edit-category"><option value="硬件故障" ${t.category==='硬件故障'?'selected':''}>硬件故障</option><option value="网络问题" ${t.category==='网络问题'?'selected':''}>网络问题</option><option value="系统故障" ${t.category==='系统故障'?'selected':''}>系统故障</option><option value="软件问题" ${t.category==='软件问题'?'selected':''}>软件问题</option><option value="性能问题" ${t.category==='性能问题'?'selected':''}>性能问题</option><option value="配置变更" ${t.category==='配置变更'?'selected':''}>配置变更</option><option value="存储问题" ${t.category==='存储问题'?'selected':''}>存储问题</option><option value="其他" ${t.category==='其他'?'selected':''}>其他</option></select></div>
+      <div class="form-group"><label class="form-label">分类</label><select class="form-select" id="edit-category"><option value="点云调试" ${t.category==='点云调试'?'selected':''}>点云调试</option><option value="硬件故障" ${t.category==='硬件故障'?'selected':''}>硬件故障</option><option value="软件问题" ${t.category==='软件问题'?'selected':''}>软件问题</option><option value="SDK开发" ${t.category==='SDK开发'?'selected':''}>SDK开发</option><option value="手眼标定" ${t.category==='手眼标定'?'selected':''}>手眼标定</option><option value="需求沟通" ${t.category==='需求沟通'?'selected':''}>需求沟通</option><option value="样品测试" ${t.category==='样品测试'?'selected':''}>样品测试</option><option value="相机选型" ${t.category==='相机选型'?'selected':''}>相机选型</option></select></div>
       <div class="form-group"><label class="form-label">截止日期</label><input type="datetime-local" id="edit-due" class="form-input" value="${t.dueDate ? t.dueDate.slice(0,16) : ''}"></div>
       <div class="form-group"><label class="form-label">详细描述</label><textarea class="form-textarea" id="edit-desc" rows="3">${escapeHtml(t.description || '')}</textarea></div>
     </div>
