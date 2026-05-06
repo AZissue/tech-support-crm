@@ -100,6 +100,15 @@ app.post('/api/tickets', auth, async (req, res) => {
 
 app.put('/api/tickets/:id', auth, async (req, res) => {
   const { id } = req.params;
+  const ticket = await db.getTicketById(id);
+  if (!ticket) return res.status(404).json({ error: '工单不存在' });
+  // 权限：管理员、创建人、负责人可以编辑
+  const isAdmin = req.user.role === 'admin';
+  const isCreator = ticket.creatorId === req.user.id;
+  const isEngineer = ticket.engineerId === req.user.id;
+  if (!isAdmin && !isCreator && !isEngineer) {
+    return res.status(403).json({ error: '无权编辑此工单' });
+  }
   const fields = req.body;
   delete fields.id;
   fields.updatedAt = new Date().toISOString();
@@ -107,15 +116,30 @@ app.put('/api/tickets/:id', auth, async (req, res) => {
   res.json({ success: true });
 });
 
-app.delete('/api/tickets/:id', auth, adminOnly, async (req, res) => {
+app.delete('/api/tickets/:id', auth, async (req, res) => {
+  const { id } = req.params;
+  const ticket = await db.getTicketById(id);
+  if (!ticket) return res.status(404).json({ error: '工单不存在' });
+  // 权限：仅管理员或创建人可删除
+  const isAdmin = req.user.role === 'admin';
+  const isCreator = ticket.creatorId === req.user.id;
+  if (!isAdmin && !isCreator) {
+    return res.status(403).json({ error: '无权删除此工单' });
+  }
   await db.deleteTicket(req.params.id);
   res.json({ success: true });
 });
 
-// ===== Ticket Comments =====
 app.post('/api/tickets/:id/comments', auth, async (req, res) => {
   const ticket = await db.getTicketById(req.params.id);
   if (!ticket) return res.status(404).json({ error: '工单不存在' });
+  // 权限：管理员、创建人、负责人可以评论
+  const isAdmin = req.user.role === 'admin';
+  const isCreator = ticket.creatorId === req.user.id;
+  const isEngineer = ticket.engineerId === req.user.id;
+  if (!isAdmin && !isCreator && !isEngineer) {
+    return res.status(403).json({ error: '无权评论此工单' });
+  }
   const comment = { ...req.body, userId: req.user.id, userName: req.user.name, createdAt: new Date().toISOString() };
   ticket.comments = ticket.comments || [];
   ticket.comments.push(comment);

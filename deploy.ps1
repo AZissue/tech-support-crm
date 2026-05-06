@@ -1,111 +1,77 @@
-# CRM_New 一键部署脚本
-# 用法：.\deploy.ps1
-# 功能：本地 push → GitHub → SSH 触发服务器拉取更新
+# 一键部署脚本 - 在本地运行
+# 用法: 右键 "使用 PowerShell 运行" 或 cmd 中执行: powershell -ExecutionPolicy Bypass -File deploy.ps1
 
-param(
-    [string]$CommitMessage = "Update CRM_New",
-    [string]$ServerIP = "120.55.245.72",
-    [string]$ServerUser = "root",
-    [string]$ServerPass = "010921Zj",
-    [int]$ServerPort = 38000
-)
+$server = "120.55.245.72"
+$user = "root"
+$pass = "010921Zj"
+$remoteDir = "/root/crm_new"
 
-$ErrorActionPreference = "Stop"
+Write-Host "=== CRM 服务器一键部署 ===" -ForegroundColor Cyan
 
-Write-Host "=== CRM_New 一键部署 ===" -ForegroundColor Cyan
-
-# 1. 检查是否在正确的目录
-$repoPath = "D:\RVC_SRC\CRM_New"
-if (-not (Test-Path "$repoPath\.git")) {
-    Write-Error "未找到 Git 仓库，请确认目录: $repoPath"
-    exit 1
-}
-
-Set-Location $repoPath
-
-# 2. 检查改动
-Write-Host "[1/5] 检查 Git 状态..." -ForegroundColor Yellow
-$status = git status --short
-if ([string]::IsNullOrWhiteSpace($status)) {
-    Write-Host "    没有未提交的改动，直接推送现有代码" -ForegroundColor Gray
-} else {
-    Write-Host "    发现未提交改动:" -ForegroundColor Yellow
-    $status | ForEach-Object { Write-Host "      $_" -ForegroundColor Gray }
-    
-    # 3. 提交
-    Write-Host "[2/5] 提交改动..." -ForegroundColor Yellow
-    git add -A
-    git commit -m "$CommitMessage"
-    Write-Host "    提交完成" -ForegroundColor Green
-}
-
-# 4. 推送到 GitHub
-Write-Host "[3/5] 推送到 GitHub (master)..." -ForegroundColor Yellow
-try {
-    git push origin master --force 2>&1 | ForEach-Object { Write-Host "    $_" -ForegroundColor Gray }
-    Write-Host "    推送完成" -ForegroundColor Green
-} catch {
-    Write-Error "GitHub 推送失败: $_"
-    exit 1
-}
-
-# 5. SSH 到服务器执行更新
-Write-Host "[4/5] 连接服务器并更新..." -ForegroundColor Yellow
-
-# 使用 sshpass 或直接 ssh（如果配置了密钥）
-# 方案 A: 如果服务器有 SSH 密钥免密登录
-# ssh ${ServerUser}@${ServerIP} "cd /opt/crm-new && git fetch origin && git reset --hard origin/master && cd project && npm install && pm2 restart crm-new"
-
-# 方案 B: 使用明文密码（需要安装 sshpass 或 plink）
-# 这里先用 echo 管道方式
-$sshCommand = @"
-cd /opt/crm-new && \
-git fetch origin && \
-git reset --hard origin/master && \
-cd project && \
-npm install && \
-pm2 restart crm-new && \
-echo '[OK] 更新完成'
+# 方法1: 直接 git pull (如果服务器能连 GitHub)
+$cmd1 = @"
+cd $remoteDir && git pull origin main && pm2 restart crm-new && echo 'SUCCESS_GIT'
 "@
 
-# 尝试 SSH 连接（使用 sshpass 或 expect）
-try {
-    # 使用 Windows 自带的 ssh + echo 管道传递密码
-    $sshCmd = "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 ${ServerUser}@${ServerIP} `"${sshCommand}`""
-    Write-Host "    执行: $sshCmd" -ForegroundColor Gray
-    
-    # 由于需要密码交互，这里提示用户手动执行或配置密钥
-    Write-Host "    ⚠️ 需要服务器密码: $ServerPass" -ForegroundColor Yellow
-    Write-Host "    如果 SSH 密钥已配置，会自动连接" -ForegroundColor Yellow
-    
-    # 尝试执行
-    $result = Invoke-Expression $sshCmd 2>&1
-    $result | ForEach-Object { Write-Host "    $_" -ForegroundColor Gray }
-} catch {
-    Write-Warning "SSH 连接失败: $_"
-    Write-Host "    请手动在服务器执行:" -ForegroundColor Cyan
-    Write-Host "    $sshCommand" -ForegroundColor White
-}
+# 方法2: 用 wget 下载 zip 覆盖 (备用)
+$cmd2 = @"
+cd $remoteDir && wget -q -O main.zip https://mirror.ghproxy.com/https://github.com/AZissue/tech-support-crm/archive/refs/heads/main.zip && unzip -oq main.zip && cp -rf tech-support-crm-main/* . && rm -rf tech-support-crm-main main.zip && pm2 restart crm-new && echo 'SUCCESS_WGET'
+"@
 
-# 6. 验证
-Write-Host "[5/5] 验证部署..." -ForegroundColor Yellow
-Start-Sleep -Seconds 2
-
-try {
-    $response = Invoke-WebRequest -Uri "http://${ServerIP}:${ServerPort}/api/health" -TimeoutSec 10 -ErrorAction SilentlyContinue
-    if ($response.StatusCode -eq 200) {
-        Write-Host "    ✅ 服务正常运行" -ForegroundColor Green
-    } else {
-        Write-Host "    ⚠️ 服务返回状态码: $($response.StatusCode)" -ForegroundColor Yellow
+function Invoke-RemoteCommand ($command) {
+    $secpass = ConvertTo-SecureString $pass -AsPlainText -Force
+    $cred = New-Object System.Management.Automation.PSCredential($user, $secpass)
+    
+    try {
+        $session = New-PSSession -HostName $server -UserName $user -SSHTransport -Credential $cred -ErrorAction Stop
+        $result = Invoke-Command -Session $session -ScriptBlock { 
+            param($c)
+            Invoke-Expression $c
+        } -ArgumentList $command
+        Remove-PSSession $session
+        return $result
+    } catch {
+        Write-Host "PowerShell SSH 失败: $_" -ForegroundColor Yellow
+        return $null
     }
-} catch {
-    Write-Host "    ⚠️ 无法连接到服务，请稍后手动检查" -ForegroundColor Yellow
 }
 
-Write-Host ""
-Write-Host "=== 部署流程结束 ===" -ForegroundColor Cyan
-Write-Host "访问地址: http://${ServerIP}:${ServerPort}" -ForegroundColor White
-Write-Host ""
-Write-Host "如果 SSH 更新失败，请手动执行:" -ForegroundColor Yellow
-Write-Host "  ssh ${ServerUser}@${ServerIP}" -ForegroundColor White
-Write-Host "  bash /opt/update-crm.sh" -ForegroundColor White
+# 尝试方法1 (git)
+Write-Host "尝试方法1: git pull..." -ForegroundColor Green
+$result = Invoke-RemoteCommand $cmd1
+
+if ($result -match "SUCCESS_GIT") {
+    Write-Host "✅ 部署成功 (git pull)" -ForegroundColor Green
+    Write-Host $result
+    exit 0
+}
+
+# 尝试方法2 (wget)
+Write-Host "尝试方法2: wget 下载..." -ForegroundColor Yellow
+$result = Invoke-RemoteCommand $cmd2
+
+if ($result -match "SUCCESS_WGET") {
+    Write-Host "✅ 部署成功 (wget)" -ForegroundColor Green
+    Write-Host $result
+    exit 0
+}
+
+# 如果 PowerShell SSH 都失败，回退到 cmd ssh
+Write-Host "PowerShell SSH 失败，尝试 cmd ssh..." -ForegroundColor Yellow
+
+$batContent = @"
+@echo off
+echo %pass% | ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=60 %user%@%server% "cd %remoteDir% ; git pull origin main ; pm2 restart crm-new"
+if errorlevel 1 (
+    echo Git failed, trying wget...
+    echo %pass% | ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no -o ConnectTimeout=60 %user%@%server% "cd %remoteDir% ; wget -q -O main.zip https://mirror.ghproxy.com/https://github.com/AZissue/tech-support-crm/archive/refs/heads/main.zip ; unzip -oq main.zip ; cp -rf tech-support-crm-main/* . ; rm -rf tech-support-crm-main main.zip ; pm2 restart crm-new"
+)
+pause
+"@
+
+$batFile = Join-Path $PSScriptRoot "deploy_fallback.bat"
+$batContent | Out-File -FilePath $batFile -Encoding ASCII
+Write-Host "已生成回退脚本: $batFile" -ForegroundColor Cyan
+Write-Host "请手动双击运行该脚本完成部署" -ForegroundColor Yellow
+
+Read-Host "按回车键退出"

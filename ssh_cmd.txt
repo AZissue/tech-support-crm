@@ -1,0 +1,1 @@
+cd /root/crm_new ; git pull origin main ; pm2 restart crm-new
