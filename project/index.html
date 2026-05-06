@@ -1501,13 +1501,13 @@ window.submitNewTicket = async () => {
     const now = new Date().toISOString();
     const due = new Date(Date.now() + 86400000 * (priority==='high'?1:priority==='medium'?3:7)).toISOString();
     const ticketType = document.getElementById('new-ticket-type').value;
-    await createTicketAsync({
+    const newTicket = await createTicketAsync({
       ticketType, title, customerId, engineerId, status: 'pending', priority, category, description,
       images: __pendingImages.map(x => x.base64),
       createdAt: now, updatedAt: now, dueDate: due, creatorId: (getCurrentUser() || {}).id, comments: []
     });
-    addReminder(id, engineerId, `您有一个新工单被指派：${title}`);
-    notify('创建成功', `工单 ${id} 已创建`, 'success');
+    addReminder(newTicket.id, engineerId, `您有一个新工单被指派：${title}`);
+    notify('创建成功', `工单 ${newTicket.id} 已创建`, 'success');
     document.querySelector('.modal-overlay').remove();
     await loadAllData();
     window.dispatchEvent(new HashChangeEvent('hashchange'));
