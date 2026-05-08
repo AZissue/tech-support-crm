@@ -1334,6 +1334,8 @@ route('dashboard', () => {
   });
 });
 
+window.goTicketPage = (p) => { __ticketPage.page = p; renderList(); };
+window.goCustomerPage = (p) => { __customerPage.page = p; const r = document.querySelector("#customer-pagination"); if (r) { const evt = document.createEvent("Event"); evt.initEvent("render", true, true); r.dispatchEvent(evt); } };
 window.goTicketsWithFilter = (filter) => {
   __dashboardFilter = filter;
   navigate('tickets');

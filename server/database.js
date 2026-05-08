@@ -82,7 +82,19 @@ const dbApi = {
     if (idx >= 0) { Object.assign(db.data.users[idx], fields); await db.write(); }
   },
 
-  async getCustomers() { await initDb(); return db.data.customers; },
+  async getCustomers(page, limit) {
+    await initDb();
+    const all = db.data.customers;
+    if (!page || !limit) return all;
+    const start = (page - 1) * limit;
+    return {
+      total: all.length,
+      data: all.slice(start, start + limit),
+      page: parseInt(page),
+      limit: parseInt(limit),
+      totalPages: Math.ceil(all.length / limit)
+    };
+  },
   async getCustomerById(id) { await initDb(); return db.data.customers.find(c => c.id === id); },
   async createCustomer(c) { await initDb(); db.data.customers.push(c); await db.write(); return c; },
   async updateCustomer(id, fields) {
@@ -96,7 +108,19 @@ const dbApi = {
     await db.write();
   },
 
-  async getTickets() { await initDb(); return db.data.tickets.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)); },
+  async getTickets(page, limit) {
+    await initDb();
+    const all = db.data.tickets.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+    if (!page || !limit) return all;
+    const start = (page - 1) * limit;
+    return {
+      total: all.length,
+      data: all.slice(start, start + limit),
+      page: parseInt(page),
+      limit: parseInt(limit),
+      totalPages: Math.ceil(all.length / limit)
+    };
+  },
   async getTicketById(id) { await initDb(); return db.data.tickets.find(t => t.id === id); },
   async createTicket(t) { await initDb(); db.data.tickets.push(t); await db.write(); return t; },
   async updateTicket(id, fields) {
