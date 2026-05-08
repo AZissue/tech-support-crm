@@ -545,6 +545,25 @@ const formatDate = (d, fmt = 'yyyy-MM-dd HH:mm') => {
   return fmt.replace(/yyyy|MM|dd|HH|mm|ss/g, m => map[m]);
 };
 const escapeHtml = str => str == null ? '' : String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[m]));
+
+window.copyToClipboard = async (text) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    notify('已复制', text, 'success');
+  } catch (e) {
+    // 降级方案
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    notify('已复制', text, 'success');
+  }
+};
+
 window.closeModalWithCleanup = (btn) => {
   const modal = btn.closest('.modal-overlay');
   const container = document.getElementById('new-images');
@@ -1348,7 +1367,17 @@ route('tickets', () => {
       let list = getTickets();
       if (filterStatus) list = list.filter(t => t.status === filterStatus);
       if (filterPriority) list = list.filter(t => t.priority === filterPriority);
-      if (search) list = list.filter(t => t.title.includes(search) || t.id.includes(search));
+      if (search) {
+        const s = search.toLowerCase();
+        list = list.filter(t => {
+          const c = getCustomers().find(x => x.id === t.customerId);
+          const eng = getUsers().find(x => x.id === t.engineerId);
+          return (t.title && t.title.toLowerCase().includes(s)) ||
+                 (t.id && t.id.toLowerCase().includes(s)) ||
+                 (c && c.name && c.name.toLowerCase().includes(s)) ||
+                 (eng && eng.name && eng.name.toLowerCase().includes(s));
+        });
+      }
       list = list.sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
       const tbody = document.getElementById('ticket-tbody');
       if (!tbody) return;
@@ -1373,7 +1402,7 @@ route('tickets', () => {
     container.innerHTML = `
       <h1 class="page-title">🎫 工单管理</h1>
       <div class="search-bar">
-        <div class="search-input"><input type="text" id="ticket-search" placeholder="搜索工单号或标题..."></div>
+        <div class="search-input"><input type="text" id="ticket-search" placeholder="搜索工单号、标题、客户名或负责人..."></div>
         <div class="filter-group">
           <select class="form-select" id="filter-status" style="width:120px"><option value="">全部状态</option><option value="pending" ${filterStatus==='pending'?'selected':''}>待处理</option><option value="processing" ${filterStatus==='processing'?'selected':''}>处理中</option><option value="waiting" ${filterStatus==='waiting'?'selected':''}>等待客户回复</option><option value="resolved" ${filterStatus==='resolved'?'selected':''}>已解决</option></select>
           <select class="form-select" id="filter-priority" style="width:120px"><option value="">全部优先级</option><option value="high" ${filterPriority==='high'?'selected':''}>高</option><option value="medium" ${filterPriority==='medium'?'selected':''}>中</option><option value="low" ${filterPriority==='low'?'selected':''}>低</option></select>
@@ -1392,7 +1421,18 @@ route('tickets', () => {
 });
 
 // ===================== 新建工单弹窗 =====================
+window.openCreateTicketForCustomer = (customerId, customerName) => {
+  openCreateTicketModal();
+  setTimeout(() => {
+    const searchEl = document.getElementById('new-customer-search');
+    const idEl = document.getElementById('new-customer-id');
+    if (searchEl) searchEl.value = customerName;
+    if (idEl) idEl.value = customerId;
+  }, 300);
+};
+
 window.openCreateTicketModal = () => {
+  const modal = document.createElement('div'); modal.className = 'modal-overlay';
   const modal = document.createElement('div'); modal.className = 'modal-overlay';
   const customers = getCustomers();
   const engineers = getUsers().filter(u => u.role === 'engineer');
@@ -1671,6 +1711,7 @@ route('ticket/([^/]+)', (id) => {
       <div class="flex flex-between flex-center mb-4">
         <h1 class="page-title" style="margin:0">🎫 ${ticket.id} ${escapeHtml(ticket.title)}</h1>
         <div class="btn-group">
+          <button class="btn btn-default btn-sm" onclick="copyToClipboard('${ticket.id}')">📋 复制编号</button>
           ${canEdit ? `<button class="btn btn-primary btn-sm" onclick="openEditTicketModal('${ticket.id}')">✏️ 编辑</button>` : ''}
           ${canEdit && ticket.status === 'pending' ? `<button class="btn btn-primary btn-sm" onclick="startProcessing('${ticket.id}')">▶️ 开始处理</button>` : ''}
           ${canEdit && ticket.status === 'processing' ? `<button class="btn btn-warning btn-sm" onclick="waitForCustomer('${ticket.id}')">⏸️ 等待客户回复</button>` : ''}
@@ -2048,7 +2089,7 @@ route('customer/([^/]+)', (id) => {
         </div>
       </div>
       <div class="card mt-4">
-        <div class="card-header"><span class="card-title">相关工单</span></div>
+        <div class="card-header"><span class="card-title">相关工单</span><button class="btn btn-sm btn-primary" onclick="openCreateTicketForCustomer('${customer.id}', '${escapeHtml(customer.name)}')">➕ 新建工单</button></div>
         <div class="card-body" style="padding:0;"><div class="table-wrap">
           <table class="data-table"><thead><tr><th>工单号</th><th>标题</th><th>状态</th><th>优先级</th><th>创建时间</th></tr></thead>
           <tbody>${relatedTickets.map(t => `<tr style="cursor:pointer" onclick="navigate('ticket/${t.id}')"><td>${t.id}</td><td>${escapeHtml(t.title)}</td><td>${statusTag(t.status)}</td><td>${priorityTag(t.priority)}</td><td>${formatDate(t.createdAt)}</td></tr>`).join('') || '<tr><td colspan="5" class="text-center text-muted">暂无工单</td></tr>'}</tbody>
