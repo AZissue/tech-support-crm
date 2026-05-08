@@ -531,6 +531,9 @@ window.doSmartParse = () => {
   if (parsed.engineerId && document.getElementById('new-engineer')) {
     document.getElementById('new-engineer').value = parsed.engineerId;
   }
+  if (parsed.status && document.getElementById('new-status')) {
+    document.getElementById('new-status').value = parsed.status;
+  }
   notify('解析完成', '已自动填充识别到的字段', 'success');
 };
 const formatDate = (d, fmt = 'yyyy-MM-dd HH:mm') => {
@@ -1409,7 +1412,12 @@ window.openCreateTicketModal = () => {
           <div class="form-group"><label class="form-label">工单类型</label>
             <select class="form-select" id="new-ticket-type"><option value="RVC" selected>RVC</option><option value="VDA">VDA</option></select>
           </div>
-          <div class="form-group"><label class="form-label">标题 <span class="required">*</span></label><input type="text" id="new-title" class="form-input"></div>
+          <div class="form-group"><label class="form-label">状态</label>
+            <select class="form-select" id="new-status"><option value="pending" selected>待处理</option><option value="processing">处理中</option><option value="waiting">等待回复</option><option value="resolved">已解决</option><option value="closed">已关闭</option></select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1.5"><label class="form-label">标题 <span class="required">*</span></label><input type="text" id="new-title" class="form-input"></div>
         </div>
         <div class="form-row">
           <div class="form-group"><label class="form-label">客户 <span class="required">*</span></label>
@@ -1468,6 +1476,7 @@ window.submitNewTicket = async () => {
   let engineerId = document.getElementById('new-engineer').value;
   const priority = document.getElementById('new-priority').value;
   const category = document.getElementById('new-category').value;
+  const status = document.getElementById('new-status').value;
   const description = document.getElementById('new-desc').value.trim();
   if (!title) { notify('请填写标题', '', 'warning'); return; }
   if (!customerName) { notify('请填写客户名称', '', 'warning'); return; }
@@ -1502,7 +1511,7 @@ window.submitNewTicket = async () => {
     const due = new Date(Date.now() + 86400000 * (priority==='high'?1:priority==='medium'?3:7)).toISOString();
     const ticketType = document.getElementById('new-ticket-type').value;
     const newTicket = await createTicketAsync({
-      ticketType, title, customerId, engineerId, status: 'pending', priority, category, description,
+      ticketType, title, customerId, engineerId, status, priority, category, description,
       images: __pendingImages.map(x => x.base64),
       createdAt: now, updatedAt: now, dueDate: due, creatorId: (getCurrentUser() || {}).id, comments: []
     });
