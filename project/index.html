@@ -1388,7 +1388,7 @@ route('tickets', () => {
         return `<tr>
           <td style="cursor:pointer" onclick="navigate('ticket/${t.id}')"><span class="font-bold">${t.id}</span>${overdue?' <span class="tag tag-red">逾期</span>':''}</td>
           <td style="cursor:pointer" onclick="navigate('ticket/${t.id}')">${escapeHtml(t.title)}</td>
-          <td style="cursor:pointer" onclick="navigate('ticket/${t.id}')">${c ? escapeHtml(c.name) : '-'}</td>
+          <td style="cursor:pointer" onclick="navigate('ticket/${t.id}')">${c ? escapeHtml(c.name) : t.customerId ? '<span class="text-muted">客户已删除</span>' : '-'}</td>
           <td style="cursor:pointer" onclick="navigate('ticket/${t.id}')">${escapeHtml(t.category || '-')}</td>
           <td style="cursor:pointer" onclick="navigate('ticket/${t.id}')">${statusTag(t.status)}</td>
           <td style="cursor:pointer" onclick="navigate('ticket/${t.id}')">${priorityTag(t.priority)}</td>
@@ -1421,6 +1421,53 @@ route('tickets', () => {
 });
 
 // ===================== 新建工单弹窗 =====================
+window.openLinkTicketsModal = (customerId, customerName) => {
+  // 查找所有 customerId 为空或客户不存在的工单
+  const allCustomers = getCustomers();
+  const orphanTickets = getTickets().filter(t => {
+    if (!t.customerId) return true;
+    const c = allCustomers.find(x => x.id === t.customerId);
+    return !c;
+  }).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+  
+  if (!orphanTickets.length) {
+    notify('没有可关联的工单', '所有工单都已关联到现有客户', 'info');
+    return;
+  }
+  
+  const modal = document.createElement('div'); modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal" style="max-width:700px">
+      <div class="modal-header"><span class="modal-title">🔗 关联工单到 ${escapeHtml(customerName)}</span><span class="modal-close" onclick="this.closest('.modal-overlay').remove()">&times;</span></div>
+      <div class="modal-body" style="max-height:60vh;overflow-y:auto">
+        <p class="text-muted font-sm mb-3">以下工单当前未关联到任何客户，勾选后点击确认关联。</p>
+        <table class="data-table"><thead><tr><th style="width:40px"><input type="checkbox" id="link-all" onclick="document.querySelectorAll('.link-check').forEach(c=>c.checked=this.checked)"></th><th>工单号</th><th>标题</th><th>状态</th><th>优先级</th><th>创建时间</th></tr></thead>
+        <tbody>
+          ${orphanTickets.map(t => `<tr><td><input type="checkbox" class="link-check" data-id="${t.id}"></td><td>${t.id}</td><td>${escapeHtml(t.title)}</td><td>${statusTag(t.status)}</td><td>${priorityTag(t.priority)}</td><td>${formatDate(t.createdAt)}</td></tr>`).join('')}
+        </tbody></table>
+      </div>
+      <div class="modal-footer"><button class="btn btn-default" onclick="this.closest('.modal-overlay').remove()">取消</button><button class="btn btn-primary" onclick="submitLinkTickets('${customerId}')">确认关联</button></div>
+    </div>`;
+  document.body.appendChild(modal);
+};
+
+window.submitLinkTickets = async (customerId) => {
+  const checks = document.querySelectorAll('.link-check:checked');
+  if (!checks.length) { notify('请至少选择一个工单', '', 'warning'); return; }
+  const ids = Array.from(checks).map(c => c.dataset.id);
+  try {
+    for (const id of ids) {
+      await saveTicketUpdate(id, { customerId, updatedAt: new Date().toISOString() });
+    }
+    notify('关联成功', `已将 ${ids.length} 个工单关联到当前客户`, 'success');
+    document.querySelector('.modal-overlay').remove();
+    await loadAllData();
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+  } catch (e) {
+    notify('关联失败', e.message, 'error');
+  }
+};
+
 window.openCreateTicketForCustomer = (customerId, customerName) => {
   openCreateTicketModal();
   setTimeout(() => {
@@ -1432,7 +1479,6 @@ window.openCreateTicketForCustomer = (customerId, customerName) => {
 };
 
 window.openCreateTicketModal = () => {
-  const modal = document.createElement('div'); modal.className = 'modal-overlay';
   const modal = document.createElement('div'); modal.className = 'modal-overlay';
   const customers = getCustomers();
   const engineers = getUsers().filter(u => u.role === 'engineer');
@@ -1460,9 +1506,9 @@ window.openCreateTicketModal = () => {
           <div class="form-group" style="flex:1.5"><label class="form-label">标题 <span class="required">*</span></label><input type="text" id="new-title" class="form-input"></div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label class="form-label">客户 <span class="required">*</span></label>
+          <div class="form-group"><label class="form-label">客户</label>
             <div class="customer-search-wrap" style="position:relative;">
-              <input type="text" id="new-customer-search" class="form-input" placeholder="输入客户名称搜索，未匹配将自动创建" autocomplete="off">
+              <input type="text" id="new-customer-search" class="form-input" placeholder="输入客户名称搜索，未匹配将自动创建（可选）" autocomplete="off">
               <input type="hidden" id="new-customer-id">
               <div id="customer-suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:0 0 var(--radius) var(--radius);max-height:200px;overflow-y:auto;z-index:100;box-shadow:var(--shadow);"></div>
             </div>
@@ -1519,13 +1565,13 @@ window.submitNewTicket = async () => {
   const status = document.getElementById('new-status').value;
   const description = document.getElementById('new-desc').value.trim();
   if (!title) { notify('请填写标题', '', 'warning'); return; }
-  if (!customerName) { notify('请填写客户名称', '', 'warning'); return; }
+  // 客户名称改为可选
   // 如果没有指定负责人，默认使用创建人自己
   if (!engineerId) {
     engineerId = (getCurrentUser() || {}).id || '';
   }
-  // 如果没有匹配到已有客户，自动创建新客户
-  if (!customerId) {
+  // 如果填写了客户名称但没有匹配到已有客户，自动创建新客户
+  if (customerName && !customerId) {
     try {
       const newC = await createCustomerAsync({
         id: generateId('cus'),
@@ -1760,7 +1806,7 @@ route('ticket/([^/]+)', (id) => {
           <div class="card">
             <div class="card-header"><span class="card-title">👤 客户信息</span></div>
             <div class="card-body">
-              <div class="form-group"><label class="form-label">客户名称</label><div class="font-bold">${customer ? escapeHtml(customer.name) : '-'}</div></div>
+              <div class="form-group"><label class="form-label">客户名称</label><div class="font-bold">${customer ? escapeHtml(customer.name) : ticket.customerId ? '<span class="text-muted">客户已删除</span>' : '-'}</div></div>
               <div class="form-group"><label class="form-label">联系人</label><div>${customer ? escapeHtml(customer.contact) : '-'}</div></div>
               <div class="form-group"><label class="form-label">电话</label><div>${customer ? escapeHtml(customer.phone) : '-'}</div></div>
               <div class="form-group"><label class="form-label">邮箱</label><div>${customer ? escapeHtml(customer.email) : '-'}</div></div>
@@ -2025,7 +2071,7 @@ window.openAddCustomerModal = () => {
   const modal = document.createElement('div'); modal.className = 'modal-overlay';
   modal.innerHTML = `<div class="modal"><div class="modal-header"><span class="modal-title">➕ 添加客户</span><span class="modal-close" onclick="this.closest('.modal-overlay').remove()">&times;</span></div>
     <div class="modal-body">
-      <div class="form-row"><div class="form-group"><label class="form-label">客户名称 <span class="required">*</span></label><input type="text" id="cust-name" class="form-input"></div><div class="form-group"><label class="form-label">联系人 <span class="required">*</span></label><input type="text" id="cust-contact" class="form-input"></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">客户名称 <span class="required">*</span></label><input type="text" id="cust-name" class="form-input"></div><div class="form-group"><label class="form-label">联系人</label><input type="text" id="cust-contact" class="form-input"></div></div>
       <div class="form-row"><div class="form-group"><label class="form-label">电话</label><input type="text" id="cust-phone" class="form-input"></div><div class="form-group"><label class="form-label">邮箱</label><input type="text" id="cust-email" class="form-input"></div></div>
       <div class="form-group"><label class="form-label">地址</label><input type="text" id="cust-address" class="form-input"></div>
       <div class="form-row"><div class="form-group"><label class="form-label">行业</label><input type="text" id="cust-industry" class="form-input"></div><div class="form-group"><label class="form-label">等级</label><select class="form-select" id="cust-level"><option>A</option><option>B</option><option>C</option></select></div></div>
@@ -2036,7 +2082,7 @@ window.openAddCustomerModal = () => {
 window.submitCustomer = async () => {
   const name = document.getElementById('cust-name').value.trim();
   const contact = document.getElementById('cust-contact').value.trim();
-  if (!name || !contact) { notify('请填写必填项', '', 'warning'); return; }
+  if (!name) { notify('请填写必填项', '', 'warning'); return; }
   try {
     await createCustomerAsync({ id: generateId('cus'), name, contact, phone: document.getElementById('cust-phone').value, email: document.getElementById('cust-email').value, address: document.getElementById('cust-address').value, industry: document.getElementById('cust-industry').value, level: document.getElementById('cust-level').value, devices: [], createdAt: new Date().toISOString() });
     notify('添加成功', '', 'success');
@@ -2089,7 +2135,7 @@ route('customer/([^/]+)', (id) => {
         </div>
       </div>
       <div class="card mt-4">
-        <div class="card-header"><span class="card-title">相关工单</span><button class="btn btn-sm btn-primary" onclick="openCreateTicketForCustomer('${customer.id}', '${escapeHtml(customer.name)}')">➕ 新建工单</button></div>
+        <div class="card-header"><span class="card-title">相关工单</span><div class="btn-group"><button class="btn btn-sm btn-primary" onclick="openCreateTicketForCustomer('${customer.id}', '${escapeHtml(customer.name)}')">➕ 新建工单</button><button class="btn btn-sm btn-default" onclick="openLinkTicketsModal('${customer.id}', '${escapeHtml(customer.name)}')">🔗 关联工单</button></div></div>
         <div class="card-body" style="padding:0;"><div class="table-wrap">
           <table class="data-table"><thead><tr><th>工单号</th><th>标题</th><th>状态</th><th>优先级</th><th>创建时间</th></tr></thead>
           <tbody>${relatedTickets.map(t => `<tr style="cursor:pointer" onclick="navigate('ticket/${t.id}')"><td>${t.id}</td><td>${escapeHtml(t.title)}</td><td>${statusTag(t.status)}</td><td>${priorityTag(t.priority)}</td><td>${formatDate(t.createdAt)}</td></tr>`).join('') || '<tr><td colspan="5" class="text-center text-muted">暂无工单</td></tr>'}</tbody>
@@ -2141,7 +2187,7 @@ window.openEditCustomerModal = (id) => {
   const modal = document.createElement('div'); modal.className = 'modal-overlay';
   modal.innerHTML = `<div class="modal"><div class="modal-header"><span class="modal-title">✏️ 编辑客户</span><span class="modal-close" onclick="this.closest('.modal-overlay').remove()">&times;</span></div>
     <div class="modal-body">
-      <div class="form-row"><div class="form-group"><label class="form-label">客户名称 <span class="required">*</span></label><input type="text" id="edit-cust-name" class="form-input" value="${escapeHtml(c.name)}"></div><div class="form-group"><label class="form-label">联系人 <span class="required">*</span></label><input type="text" id="edit-cust-contact" class="form-input" value="${escapeHtml(c.contact)}"></div></div>
+      <div class="form-row"><div class="form-group"><label class="form-label">客户名称 <span class="required">*</span></label><input type="text" id="edit-cust-name" class="form-input" value="${escapeHtml(c.name)}"></div><div class="form-group"><label class="form-label">联系人</label><input type="text" id="edit-cust-contact" class="form-input" value="${escapeHtml(c.contact)}"></div></div>
       <div class="form-row"><div class="form-group"><label class="form-label">电话</label><input type="text" id="edit-cust-phone" class="form-input" value="${escapeHtml(c.phone||'')}"></div><div class="form-group"><label class="form-label">邮箱</label><input type="text" id="edit-cust-email" class="form-input" value="${escapeHtml(c.email||'')}"></div></div>
       <div class="form-group"><label class="form-label">地址</label><input type="text" id="edit-cust-address" class="form-input" value="${escapeHtml(c.address||'')}"></div>
       <div class="form-row"><div class="form-group"><label class="form-label">行业</label><input type="text" id="edit-cust-industry" class="form-input" value="${escapeHtml(c.industry||'')}"></div><div class="form-group"><label class="form-label">等级</label><select class="form-select" id="edit-cust-level"><option value="A" ${c.level==='A'?'selected':''}>A</option><option value="B" ${c.level==='B'?'selected':''}>B</option><option value="C" ${c.level==='C'?'selected':''}>C</option></select></div></div>
@@ -2152,7 +2198,7 @@ window.openEditCustomerModal = (id) => {
 window.submitEditCustomer = async (id) => {
   const name = document.getElementById('edit-cust-name').value.trim();
   const contact = document.getElementById('edit-cust-contact').value.trim();
-  if (!name || !contact) { notify('请填写必填项', '', 'warning'); return; }
+  if (!name) { notify('请填写必填项', '', 'warning'); return; }
   try {
     await updateCustomerAsync(id, {
       name, contact,

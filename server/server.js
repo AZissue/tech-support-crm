@@ -126,7 +126,9 @@ app.delete('/api/tickets/:id', auth, async (req, res) => {
   if (!isAdmin && !isCreator) {
     return res.status(403).json({ error: '无权删除此工单' });
   }
-  await db.deleteTicket(req.params.id);
+  // 级联清理：硬删除关联的提醒
+  await db.deleteRemindersByTicketId(id);
+  await db.deleteTicket(id);
   res.json({ success: true });
 });
 

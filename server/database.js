@@ -15,6 +15,8 @@ function generateId(prefix = 'id') {
   return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6)}`;
 }
 
+const generatingTicketIds = new Set();
+
 function generateTicketId(type = 'RVC') {
   const n = new Date();
   const yy = String(n.getFullYear()).slice(2);
@@ -32,9 +34,29 @@ function generateTicketId(type = 'RVC') {
       if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
     }
   }
+  // 同时考虑正在生成中的 ID（防止并发撞号）
+  for (const id of generatingTicketIds) {
+    if (id.startsWith(prefix)) {
+      const seqStr = id.slice(prefix.length);
+      const seq = parseInt(seqStr, 10);
+      if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+    }
+  }
   
-  const nextSeq = String(maxSeq + 1).padStart(3, '0');
-  return `${prefix}${nextSeq}`;
+  let nextSeq = maxSeq + 1;
+  let candidate = `${prefix}${String(nextSeq).padStart(3, '0')}`;
+  
+  // 双重检查：确保候选 ID 不重复
+  while ((db.data.tickets || []).find(t => t.id === candidate) || generatingTicketIds.has(candidate)) {
+    nextSeq++;
+    candidate = `${prefix}${String(nextSeq).padStart(3, '0')}`;
+  }
+  
+  generatingTicketIds.add(candidate);
+  // 5 秒后自动释放，防止内存泄漏
+  setTimeout(() => generatingTicketIds.delete(candidate), 5000);
+  
+  return candidate;
 }
 
 async function initDb() {
@@ -172,6 +194,16 @@ const dbApi = {
   async clearReminders(userId) {
     await initDb();
     db.data.reminders = (db.data.reminders || []).map(r => r.toUserId === userId ? { ...r, read: true } : r);
+    await db.write();
+  },
+  async deleteReminder(id) {
+    await initDb();
+    db.data.reminders = (db.data.reminders || []).filter(r => r.id !== id);
+    await db.write();
+  },
+  async deleteRemindersByTicketId(ticketId) {
+    await initDb();
+    db.data.reminders = (db.data.reminders || []).filter(r => r.ticketId !== ticketId);
     await db.write();
   }
 };
