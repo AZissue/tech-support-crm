@@ -311,9 +311,39 @@ app.get('/api/export/customers', auth, async (req, res) => {
   }
 });
 
+// ===== Auto-close resolved tickets after 7 days =====
+const AUTO_CLOSE_DAYS = 7;
+const AUTO_CLOSE_MS = AUTO_CLOSE_DAYS * 24 * 60 * 60 * 1000;
+
+async function autoCloseResolvedTickets() {
+  try {
+    const tickets = await db.getTickets();
+    const now = Date.now();
+    let closedCount = 0;
+    for (const t of tickets) {
+      if (t.status === 'resolved' && t.updatedAt) {
+        const lastUpdate = new Date(t.updatedAt).getTime();
+        if (now - lastUpdate > AUTO_CLOSE_MS) {
+          await db.updateTicket(t.id, { status: 'closed', updatedAt: new Date().toISOString() });
+          closedCount++;
+          console.log(`[AutoClose] ${t.id} resolved→closed (last update: ${t.updatedAt})`);
+        }
+      }
+    }
+    if (closedCount > 0) {
+      console.log(`[AutoClose] ${closedCount} ticket(s) auto-closed.`);
+    }
+  } catch (e) {
+    console.error('[AutoClose] Error:', e.message);
+  }
+}
+
 // ===== Start =====
 app.listen(PORT, () => {
   console.log(`[CRM Server] http://localhost:${PORT}`);
   console.log(`[API Base] http://localhost:${PORT}/api`);
   console.log(`[DB] ${path.resolve(__dirname, 'data', 'crm.db')}`);
+  // 启动时立即检查一次，然后每24小时检查一次
+  autoCloseResolvedTickets();
+  setInterval(autoCloseResolvedTickets, 24 * 60 * 60 * 1000);
 });
