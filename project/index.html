@@ -678,7 +678,11 @@ const API_BASE = '/api';
 let __token = localStorage.getItem('crm_token') || '';
 let __users = [];
 let __tickets = [];
-let __customers = [];
+let __ticketPage = { page: 1, pageSize: 20 };
+let __customerPage = { page: 1, pageSize: 20 };
+let __ticketFilter = { status: '', priority: '', search: '' };
+let __customerFilter = { search: '' };
+
 
 async function apiFetch(path, opts = {}) {
   const url = `${API_BASE}${path}`;
@@ -1334,8 +1338,27 @@ route('dashboard', () => {
   });
 });
 
-window.goTicketPage = (p) => { __ticketPage.page = p; renderList(); };
-window.goCustomerPage = (p) => { __customerPage.page = p; const r = document.querySelector("#customer-pagination"); if (r) { const evt = document.createEvent("Event"); evt.initEvent("render", true, true); r.dispatchEvent(evt); } };
+function renderPagination(total, currentPage, pageSize, goFuncName) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  if (totalPages <= 1) return '';
+  let html = `<div class="pagination" style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--border-light);">
+    <span style="font-size:.85rem;color:var(--text-muted);">共 ${total} 条，${totalPages} 页</span>
+    <div style="display:flex;gap:4px;align-items:center;">`;
+  html += `<button class="btn btn-sm btn-default" ${currentPage===1?'disabled':''} onclick="${goFuncName}(${currentPage-1})">上一页</button>`;
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
+      html += `<button class="btn btn-sm ${i===currentPage?'btn-primary':'btn-default'}" onclick="${goFuncName}(${i})">${i}</button>`;
+    } else if (i === currentPage - 2 || i === currentPage + 2) {
+      html += `<span style="padding:2px 4px;color:var(--text-muted);font-size:.85rem;">...</span>`;
+    }
+  }
+  html += `<button class="btn btn-sm btn-default" ${currentPage===totalPages?'disabled':''} onclick="${goFuncName}(${currentPage+1})">下一页</button>`;
+  html += `</div></div>`;
+  return html;
+}
+
+window.goTicketPage = (p) => { __ticketPage.page = p; window.dispatchEvent(new HashChangeEvent('hashchange')); };
+window.goCustomerPage = (p) => { __customerPage.page = p; window.dispatchEvent(new HashChangeEvent('hashchange')); };
 window.goTicketsWithFilter = (filter) => {
   __dashboardFilter = filter;
   navigate('tickets');
@@ -1358,13 +1381,17 @@ function priorityTag(p) {
 route('tickets', () => {
   if (!getCurrentUser()) return navigate('login');
   renderLayout(container => {
-    let filterStatus = '', filterPriority = '', search = '';
+    let filterStatus = __ticketFilter.status;
+    let filterPriority = __ticketFilter.priority;
+    let search = __ticketFilter.search;
     const dashFilter = window.__dashboardFilter;
     if (dashFilter) {
-      if (dashFilter === 'high') filterPriority = 'high';
-      else filterStatus = dashFilter;
+      if (dashFilter === 'high') { filterPriority = 'high'; __ticketFilter.priority = 'high'; }
+      else { filterStatus = dashFilter; __ticketFilter.status = dashFilter; }
       window.__dashboardFilter = '';
     }
+    const page = __ticketPage.page;
+    const pageSize = __ticketPage.pageSize;
     const renderList = () => {
       let list = getTickets();
       if (filterStatus) list = list.filter(t => t.status === filterStatus);
@@ -1381,9 +1408,13 @@ route('tickets', () => {
         });
       }
       list = list.sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
+      const total = list.length;
+      const start = (page - 1) * pageSize;
+      const pageList = list.slice(start, start + pageSize);
       const tbody = document.getElementById('ticket-tbody');
+      const pgContainer = document.getElementById('ticket-pagination');
       if (!tbody) return;
-      tbody.innerHTML = list.map(t => {
+      tbody.innerHTML = pageList.map(t => {
         const c = getCustomers().find(x => x.id === t.customerId);
         const eng = getUsers().find(x => x.id === t.engineerId);
         const overdue = t.status !== 'resolved' && t.status !== 'closed' && new Date(t.dueDate) < new Date();
@@ -1400,11 +1431,12 @@ route('tickets', () => {
           ${isAdmin() ? `<td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deleteTicket('${t.id}')">删除</button></td>` : ''}
         </tr>`;
       }).join('') || '<tr><td colspan="10" class="text-center text-muted">无匹配工单</td></tr>';
+      if (pgContainer) pgContainer.innerHTML = renderPagination(total, page, pageSize, 'goTicketPage');
     };
     container.innerHTML = `
       <h1 class="page-title">🎫 工单管理</h1>
       <div class="search-bar">
-        <div class="search-input"><input type="text" id="ticket-search" placeholder="搜索工单号、标题、客户名或负责人..."></div>
+        <div class="search-input"><input type="text" id="ticket-search" value="${escapeHtml(search)}" placeholder="搜索工单号、标题、客户名或负责人..."></div>
         <div class="filter-group">
           <select class="form-select" id="filter-status" style="width:120px"><option value="">全部状态</option><option value="pending" ${filterStatus==='pending'?'selected':''}>待处理</option><option value="processing" ${filterStatus==='processing'?'selected':''}>处理中</option><option value="waiting" ${filterStatus==='waiting'?'selected':''}>等待客户回复</option><option value="resolved" ${filterStatus==='resolved'?'selected':''}>已解决</option></select>
           <select class="form-select" id="filter-priority" style="width:120px"><option value="">全部优先级</option><option value="high" ${filterPriority==='high'?'selected':''}>高</option><option value="medium" ${filterPriority==='medium'?'selected':''}>中</option><option value="low" ${filterPriority==='low'?'selected':''}>低</option></select>
@@ -1414,11 +1446,11 @@ route('tickets', () => {
       <div class="card"><div class="card-body" style="padding:0;"><div class="table-wrap">
         <table class="data-table"><thead><tr><th>工单号</th><th>标题</th><th>客户</th><th>分类</th><th>状态</th><th>优先级</th><th>负责人</th><th>创建时间</th><th>截止日期</th>${isAdmin()?'<th>操作</th>':''}</tr></thead>
         <tbody id="ticket-tbody"></tbody></table>
-      </div></div></div>`;
+      </div><div id="ticket-pagination"></div></div></div>`;
     setTimeout(renderList, 0);
-    document.getElementById('ticket-search').addEventListener('input', debounce(e => { search = e.target.value; renderList(); }, 300));
-    document.getElementById('filter-status').addEventListener('change', e => { filterStatus = e.target.value; renderList(); });
-    document.getElementById('filter-priority').addEventListener('change', e => { filterPriority = e.target.value; renderList(); });
+    document.getElementById('ticket-search').addEventListener('input', debounce(e => { search = e.target.value; __ticketFilter.search = search; __ticketPage.page = 1; renderList(); }, 300));
+    document.getElementById('filter-status').addEventListener('change', e => { filterStatus = e.target.value; __ticketFilter.status = filterStatus; __ticketPage.page = 1; renderList(); });
+    document.getElementById('filter-priority').addEventListener('change', e => { filterPriority = e.target.value; __ticketFilter.priority = filterPriority; __ticketPage.page = 1; renderList(); });
   });
 });
 
@@ -2034,13 +2066,19 @@ window.doUrge = async (id) => {
 route('customers', () => {
   if (!getCurrentUser()) return navigate('login');
   renderLayout(container => {
-    let search = '';
+    let search = __customerFilter.search;
+    const page = __customerPage.page;
+    const pageSize = __customerPage.pageSize;
     const render = () => {
       let list = getCustomers();
       if (search) list = list.filter(c => c.name.includes(search) || c.contact.includes(search) || c.phone.includes(search));
+      const total = list.length;
+      const start = (page - 1) * pageSize;
+      const pageList = list.slice(start, start + pageSize);
       const tbody = document.getElementById('cust-tbody');
+      const pgContainer = document.getElementById('customer-pagination');
       if (!tbody) return;
-      tbody.innerHTML = list.map(c => {
+      tbody.innerHTML = pageList.map(c => {
         const lastTicket = getTickets().filter(t => t.customerId === c.id).sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt))[0];
         return `<tr>
         <td style="cursor:pointer" onclick="navigate('customer/${c.id}')">${escapeHtml(c.name)}</td>
@@ -2053,19 +2091,20 @@ route('customers', () => {
         ${isAdmin()?`<td><button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deleteCustomer('${c.id}')">删除</button></td>`:''}
       </tr>`;
       }).join('') || '<tr><td colspan="8" class="text-center text-muted">无匹配客户</td></tr>';
+      if (pgContainer) pgContainer.innerHTML = renderPagination(total, page, pageSize, 'goCustomerPage');
     };
     container.innerHTML = `
       <h1 class="page-title">👥 客户管理</h1>
       <div class="search-bar">
-        <div class="search-input"><input type="text" id="cust-search" placeholder="搜索客户名称、联系人或电话..."></div>
+        <div class="search-input"><input type="text" id="cust-search" value="${escapeHtml(search)}" placeholder="搜索客户名称、联系人或电话..."></div>
         <button class="btn btn-primary" onclick="openAddCustomerModal()">+ 添加客户</button>
       </div>
       <div class="card"><div class="card-body" style="padding:0;"><div class="table-wrap">
         <table class="data-table"><thead><tr><th>客户名称</th><th>联系人</th><th>电话</th><th>行业</th><th>等级</th><th>最近工单</th><th>设备数</th>${isAdmin()?'<th>操作</th>':''}</tr></thead>
         <tbody id="cust-tbody"></tbody></table>
-      </div></div></div>`;
+      </div><div id="customer-pagination"></div></div></div>`;
     setTimeout(render, 0);
-    document.getElementById('cust-search').addEventListener('input', debounce(e => { search = e.target.value; render(); }, 300));
+    document.getElementById('cust-search').addEventListener('input', debounce(e => { search = e.target.value; __customerFilter.search = search; __customerPage.page = 1; render(); }, 300));
   });
 });
 
