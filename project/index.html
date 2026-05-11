@@ -1193,12 +1193,12 @@ route('login', () => {
           <form class="login-form" id="login-form" onsubmit="event.preventDefault(); handleLogin();">
             <div class="form-group">
               <label class="form-label">登录账号</label>
-              <input type="text" id="login-user" class="form-input" placeholder="请输入用户名" value="admin" autocomplete="username">
+              <input type="text" id="login-user" class="form-input" placeholder="请输入用户名" value="${localStorage.getItem('crm_last_username') || ''}" autocomplete="username">
             </div>
             <div class="form-group">
               <label class="form-label">登录密码</label>
               <div class="input-wrap">
-                <input type="password" id="login-pass" class="form-input" placeholder="请输入密码" value="admin123" autocomplete="current-password">
+                <input type="password" id="login-pass" class="form-input" placeholder="请输入密码" value="" autocomplete="current-password">
                 <span class="toggle-pass" onclick="togglePassword()" title="显示/隐藏密码">👁️</span>
               </div>
             </div>
@@ -1251,6 +1251,7 @@ window.handleLogin = async () => {
     const remember = document.getElementById('login-remember') && document.getElementById('login-remember').checked;
     const user = await loginAsync(u, p, remember);
     if (user) {
+      localStorage.setItem('crm_last_username', u);
       notify('登录成功', `欢迎回来，${user.name}`, 'success');
       navigate('dashboard');
     } else {
